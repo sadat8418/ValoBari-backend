@@ -225,4 +225,4 @@ app.get("/me", async (req, res) => {
     }
 });
 
-app.listen(PORT, () => console.log("🚀 Backend running on desired port "));
+app.listen(process.env.PORT, () => console.log("🚀 Backend running on desired port "));
