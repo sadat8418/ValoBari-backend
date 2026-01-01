@@ -6,6 +6,17 @@ const router = express.Router();
 // CREATE payment manually (if needed)
 router.post("/", async (req, res) => {
     const { booking_id, provider } = req.body;
+    const paymentCheck = await pool.query(
+  `SELECT * FROM payments WHERE booking_id=$1 AND status='initiated'`,
+  [booking.id]
+);
+
+if (paymentCheck.rowCount > 0) {
+  return res.json({
+    success: true,
+    url: paymentCheck.rows[0].bkash_url // optional
+  });
+}
 
     const result = await pool.query(
         `INSERT INTO payments (
@@ -43,5 +54,7 @@ router.put("/:id", async (req, res) => {
 
     res.json({ success: true });
 });
+
+
 
 export default router;

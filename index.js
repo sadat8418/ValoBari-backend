@@ -4,11 +4,14 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import { pool } from "./db.js";
+import connectMongo  from "./bkash/mongo.js";
+// import connectPostgres from "./db.js";
 
 import propertyRoutes from "./routes/property.js";
 import bookingRoutes from "./routes/booking.js";
 import paymentRoutes from "./routes/payment.js";
-
+import bkashCallbackRoute from "./bkash/bkashCallback.js";
+import makePaymentRoute from "./bkash/makePayment.js";
 dotenv.config();
 const app = express();
 
@@ -19,7 +22,8 @@ app.use(express.json());
 app.use("/properties", propertyRoutes);
 app.use("/bookings", bookingRoutes);
 app.use("/payments", paymentRoutes);
-
+app.use("/api", bkashCallbackRoute);
+app.use("/api", makePaymentRoute);
 // ----------------------- REGISTER -----------------------
 app.post("/register", async (req, res) => {
     const { name, email, password } = req.body;
@@ -130,6 +134,11 @@ app.get("/me", async (req, res) => {
 
 // ----------------------- START SERVER -----------------------
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () =>
-    console.log(`🚀 Backend running on port ${PORT}`)
-);
+
+(async () => {
+  await connectMongo();      // MongoDB (bKash tokens, sessions)
+//   await connectPostgres(); 
+ app.listen(PORT, () => {
+    console.log(`🚀 Backend running on port ${PORT}`);
+  });
+})();

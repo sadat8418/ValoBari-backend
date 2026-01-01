@@ -2,51 +2,21 @@ import express from "express";
 import { pool } from "../db.js";
 import authMiddleware from "../middleware/auth.js";
 import adminMiddleware from "../middleware/admin.js";
-
+import upload from "../middleware/upload.js";
 const router = express.Router();
 
 /* ============================================================
    CREATE PROPERTY (ADMIN ONLY)
 ============================================================ */
-router.post("/", authMiddleware, adminMiddleware, async (req, res) => {
-    try {
-        const {
-            category_id,
-            name,
-            slug,
-            description,
-            location,
-            price,
-            bedrooms,
-            bathrooms,
-            amenities,
-            status
-        } = req.body;
-// let { amenities } = req.body;
 
-// try {
-//     if (typeof amenities === "string") {
-//         // If frontend sends a CSV string
-//         if (amenities.includes(",")) {
-//             amenities = amenities.split(",").map(a => a.trim());
-//         } else {
-//             // If frontend sends a JSON string (e.g., "[]")
-//             amenities = JSON.parse(amenities);
-//         }
-//     }
-
-//     if (!amenities) amenities = []; // fallback
-// } catch (err) {
-//     console.error("AMENITIES PARSE ERROR:", err);
-//     amenities = [];
-// }
-
-        const result = await pool.query(
-            `INSERT INTO properties 
-            (category_id, name, slug, description, location, price, bedrooms, bathrooms, amenities, status)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-            RETURNING *`,
-            [
+router.post(
+    "/",
+    authMiddleware,
+    adminMiddleware,
+    upload.single("image"),
+    async (req, res) => {
+        try {
+            const {
                 category_id,
                 name,
                 slug,
@@ -56,16 +26,61 @@ router.post("/", authMiddleware, adminMiddleware, async (req, res) => {
                 bedrooms,
                 bathrooms,
                 amenities,
-                status || "active"
-            ]
-        );
+                status
+            } = req.body;
 
-        res.json({ success: true, property: result.rows[0] });
+            // ✅ Cloudinary URL (already uploaded)
+            const imageUrl = req.file ? req.file.path : null;
 
-    } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+const baseSlug = slug.toLowerCase().replace(/\s+/g, "-");
+let finalSlug = baseSlug;
+let counter = 1;
+
+// check duplicates
+while (true) {
+    const check = await pool.query(
+        "SELECT id FROM properties WHERE slug=$1",
+        [finalSlug]
+    );
+    if (check.rows.length === 0) break;
+    finalSlug = `${baseSlug}-${counter++}`;
+}
+
+            const result = await pool.query(
+                `INSERT INTO properties
+                (category_id, name, slug, description, location, price,
+                 bedrooms, bathrooms, amenities, status, image)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                 RETURNING *`,
+                [
+                    category_id,
+                    name,
+                    finalSlug,
+                    description,
+                    location,
+                    price,
+                    bedrooms,
+                    bathrooms,
+                    amenities,              // TEXT
+                    status || "active",
+                    imageUrl                // ✅ SAVED
+                ]
+            );
+
+            res.json({ success: true, property: result.rows[0] });
+
+        } catch (err) {
+    if (err.code === "23505") {
+        return res.status(409).json({
+            success: false,
+            error: "Slug already exists. Try a different one."
+        });
     }
-});
+    res.status(500).json({ success: false, error: err.message });
+}
+    }
+);
+
 
 /* ============================================================
    GET ALL PROPERTIES (PUBLIC)
@@ -112,37 +127,14 @@ router.get("/:id", async (req, res) => {
 /* ============================================================
    UPDATE PROPERTY (ADMIN ONLY)
 ============================================================ */
-router.put("/:id", authMiddleware, adminMiddleware, async (req, res) => {
-    try {
-        const {
-            category_id,
-            name,
-            slug,
-            description,
-            location,
-            price,
-            bedrooms,
-            bathrooms,
-            amenities,
-            status
-        } = req.body;
-
-        const result = await pool.query(
-            `UPDATE properties SET 
-                category_id=$1,
-                name=$2,
-                slug=$3,
-                description=$4,
-                location=$5,
-                price=$6,
-                bedrooms=$7,
-                bathrooms=$8,
-                amenities=$9,
-                status=$10,
-                updated_at=NOW()
-             WHERE id=$11
-             RETURNING *`,
-            [
+router.put(
+    "/:id",
+    authMiddleware,
+    adminMiddleware,
+    upload.single("image"),
+    async (req, res) => {
+        try {
+            const {
                 category_id,
                 name,
                 slug,
@@ -152,17 +144,52 @@ router.put("/:id", authMiddleware, adminMiddleware, async (req, res) => {
                 bedrooms,
                 bathrooms,
                 amenities,
-                status,
-                req.params.id
-            ]
-        );
+                status
+            } = req.body;
 
-        res.json({ success: true, property: result.rows[0] });
+            const imageUrl = req.file ? req.file.path : null;
 
-    } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+            const result = await pool.query(
+                `UPDATE properties SET
+                    category_id=$1,
+                    name=$2,
+                    slug=$3,
+                    description=$4,
+                    location=$5,
+                    price=$6,
+                    bedrooms=$7,
+                    bathrooms=$8,
+                    amenities=$9,
+                    status=$10,
+                    image=COALESCE($11, image),
+                    updated_at=NOW()
+                 WHERE id=$12
+                 RETURNING *`,
+                [
+                    Number(category_id),
+                    name,
+                    slug,
+                    description,
+                    location,
+                    Number(price),
+                    Number(bedrooms),
+                    Number(bathrooms),
+                    amenities,
+                    status,
+                    imageUrl,
+                    req.params.id
+                ]
+            );
+
+            res.json({ success: true, property: result.rows[0] });
+
+        } catch (err) {
+            console.error("UPDATE PROPERTY ERROR:", err);
+            res.status(500).json({ success: false, error: err.message });
+        }
     }
-});
+);
+
 
 /* ============================================================
    DELETE PROPERTY (ADMIN ONLY)

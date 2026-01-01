@@ -5,39 +5,73 @@ import authMiddleware from "../middleware/auth.js";
 const router = express.Router();
 
 // CREATE BOOKING + PAYMENT
+// router.post("/", authMiddleware, async (req, res) => {
+//     try {
+//         const userId = req.user.id;
+//         const { property_id, total_amount } = req.body;
+
+//         // 1️⃣ Create booking
+//         const booking = await pool.query(
+//             `INSERT INTO bookings (user_id, property_id, total_amount, status)
+//              VALUES ($1, $2, $3, 'pending')
+//              RETURNING *`,
+//             [userId, property_id, total_amount]
+//         );
+
+//         const bookingId = booking.rows[0].id;
+
+//         // 2️⃣ Create payment row 
+//         const payment = await pool.query(
+//             `INSERT INTO payments (booking_id, provider, status, raw_response)
+//              VALUES ($1, 'manual', 'initiated', $2)
+//              RETURNING *`,
+//             [bookingId, "{}"] 
+//         );
+
+//         res.json({
+//             success: true,
+//             booking: booking.rows[0],
+//             payment: payment.rows[0]
+//         });
+
+//     } catch (err) {
+//         console.error("BOOKING ERROR:", err);
+//         res.status(500).json({ success: false, error: err.message });
+//     }
+// });
 router.post("/", authMiddleware, async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const { property_id, total_amount } = req.body;
+  try {
+    const userId = req.user.id;
+    const { property_id } = req.body;
 
-        // 1️⃣ Create booking
-        const booking = await pool.query(
-            `INSERT INTO bookings (user_id, property_id, total_amount, status)
-             VALUES ($1, $2, $3, 'pending')
-             RETURNING *`,
-            [userId, property_id, total_amount]
-        );
+    // 🔒 Get price from property
+    const propertyRes = await pool.query(
+      `SELECT price FROM properties WHERE id = $1`,
+      [property_id]
+    );
 
-        const bookingId = booking.rows[0].id;
-
-        // 2️⃣ Create payment row 
-        const payment = await pool.query(
-            `INSERT INTO payments (booking_id, provider, status, raw_response)
-             VALUES ($1, 'manual', 'initiated', $2)
-             RETURNING *`,
-            [bookingId, "{}"] 
-        );
-
-        res.json({
-            success: true,
-            booking: booking.rows[0],
-            payment: payment.rows[0]
-        });
-
-    } catch (err) {
-        console.error("BOOKING ERROR:", err);
-        res.status(500).json({ success: false, error: err.message });
+    if (propertyRes.rowCount === 0) {
+      return res.status(404).json({ success: false, error: "Property not found" });
     }
+
+    const total_amount = propertyRes.rows[0].price;
+
+    const bookingRes = await pool.query(
+      `INSERT INTO bookings (user_id, property_id, total_amount, status)
+       VALUES ($1, $2, $3, 'pending')
+       RETURNING *`,
+      [userId, property_id, total_amount]
+    );
+
+    res.json({
+      success: true,
+      booking: bookingRes.rows[0],
+    });
+
+  } catch (err) {
+    console.error("BOOKING ERROR:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // GET booking details
