@@ -82,14 +82,22 @@ router.get("/my", authMiddleware, async (req, res) => {
         const userId = req.user.id;
 console.log("Fetching bookings for user:", userId);
         const result = await pool.query(
+            // `SELECT b.*, p.name AS property_name,
+            //         py.status AS payment_status,
+            //         py.id AS payment_id
+            //  FROM bookings b
+            //  JOIN properties p ON b.property_id = p.id
+            //  LEFT JOIN payments py ON py.booking_id = b.id
+            //  WHERE b.user_id = $1
+            //  ORDER BY b.created_at DESC`,
             `SELECT b.*, p.name AS property_name,
-                    py.status AS payment_status,
-                    py.id AS payment_id
-             FROM bookings b
-             JOIN properties p ON b.property_id = p.id
-             LEFT JOIN payments py ON py.booking_id = b.id
-             WHERE b.user_id = $1
-             ORDER BY b.created_at DESC`,
+       COALESCE(py.status, 'initiated') AS payment_status,
+       py.id AS payment_id
+FROM bookings b
+JOIN properties p ON b.property_id = p.id
+LEFT JOIN payments py ON py.booking_id = b.id
+WHERE b.user_id = $1
+ORDER BY b.created_at DESC`,
             [userId]
         );
 
@@ -109,6 +117,8 @@ router.get("/:id", async (req, res) => {
              JOIN users u ON b.user_id = u.id
              JOIN properties p ON b.property_id = p.id
              WHERE b.id = $1`,
+            
+
             [id]
         );
 
